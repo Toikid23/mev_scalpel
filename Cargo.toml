@@ -1,0 +1,31 @@
+[package]
+name = "mev_scalpel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+solana-client = "2.3.5"
+solana-sdk = "2.3.1"
+
+#grpc implementation
+
+anchor-lang = "0.31.1"
+tokio = { version = "1", features = ["full"] }
+borsh = "1.5.7"
+bs58 = "0.5.1"
+base64 = "0.22.1"
+anyhow = "1"
+dotenvy = "0.15"
+arc-swap = "1.7.1"
+spl-math = "0.3.0"
+serde = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde_json = "1"
+tracing = "0.1.41"
+tracing-subscriber = {  version = "0.3.19", features = ["env-filter"] }
+envy = "0.4.2"
+spl-token = "8.0.0"
+hex = "0.4.3"
+bytemuck = "1.23.1"
+fixed = "1.29.0"
