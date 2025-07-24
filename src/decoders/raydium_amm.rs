@@ -1,98 +1,69 @@
 // src/decoders/raydium_amm.rs
 
-use crate::decoders::{PoolOperations, RaydiumAmmPool};
+// On importe SEULEMENT le trait `PoolOperations` depuis le module parent (`super` = `decoders`).
+use super::PoolOperations;
 use anyhow::{anyhow, Result};
 use bytemuck::{from_bytes, Pod, Zeroable};
 use solana_sdk::pubkey::Pubkey;
 
-// --- STRUCTURES COMPLÈTES, COPIÉES DEPUIS LE `state.rs` DE RAYDIUM ---
+// --- DÉFINITION DE LA STRUCT PUBLIQUE ---
+// C'est la struct que le reste de notre application utilisera.
+// Elle est maintenant définie ici, dans son propre module.
+#[derive(Debug, Clone)]
+pub struct RaydiumAmmPool {
+    pub id: Pubkey,
+    pub mint_a: Pubkey,
+    pub mint_b: Pubkey,
+    pub mint_a_reserve: u64,
+    pub mint_b_reserve: u64,
+    pub base_vault: Pubkey,
+    pub quote_vault: Pubkey,
+}
+
+
+// --- STRUCTURES DE DÉCODAGE PRIVÉES ---
+// Celles-ci ne sont utilisées qu'à l'intérieur de ce fichier.
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, Zeroable, Pod, Debug)]
 struct Fees {
-    min_separate_numerator: u64,
-    min_separate_denominator: u64,
-    trade_fee_numerator: u64,
-    trade_fee_denominator: u64,
-    pnl_numerator: u64,
-    pnl_denominator: u64,
-    swap_fee_numerator: u64,
-    swap_fee_denominator: u64,
+    min_separate_numerator: u64, min_separate_denominator: u64,
+    trade_fee_numerator: u64, trade_fee_denominator: u64,
+    pnl_numerator: u64, pnl_denominator: u64,
+    swap_fee_numerator: u64, swap_fee_denominator: u64,
 }
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, Zeroable, Pod, Debug)]
 struct StateData {
-    need_take_pnl_coin: u64,
-    need_take_pnl_pc: u64,
-    total_pnl_pc: u64,
-    total_pnl_coin: u64,
-    pool_open_time: u64,
-    padding: [u64; 2],
-    orderbook_to_init_time: u64,
-    swap_coin_in_amount: u128,
-    swap_pc_out_amount: u128,
-    swap_acc_pc_fee: u64,
-    swap_pc_in_amount: u128,
-    swap_coin_out_amount: u128,
-    swap_acc_coin_fee: u64,
+    need_take_pnl_coin: u64, need_take_pnl_pc: u64, total_pnl_pc: u64,
+    total_pnl_coin: u64, pool_open_time: u64, padding: [u64; 2],
+    orderbook_to_init_time: u64, swap_coin_in_amount: u128,
+    swap_pc_out_amount: u128, swap_acc_pc_fee: u64, swap_pc_in_amount: u128,
+    swap_coin_out_amount: u128, swap_acc_coin_fee: u64,
 }
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, Zeroable, Pod, Debug)]
 struct AmmInfo {
-    status: u64,
-    nonce: u64,
-    order_num: u64,
-    depth: u64,
-    coin_decimals: u64,
-    pc_decimals: u64,
-    state: u64,
-    reset_flag: u64,
-    min_size: u64,
-    vol_max_cut_ratio: u64,
-    amount_wave: u64,
-    coin_lot_size: u64,
-    pc_lot_size: u64,
-    min_price_multiplier: u64,
-    max_price_multiplier: u64,
-    sys_decimal_value: u64,
-    fees: Fees,
-    state_data: StateData,
-    coin_vault: Pubkey,
-    pc_vault: Pubkey,
-    coin_vault_mint: Pubkey,
-    pc_vault_mint: Pubkey,
-    lp_mint: Pubkey,
-    open_orders: Pubkey,
-    market: Pubkey,
-    market_program: Pubkey,
-    target_orders: Pubkey,
-    padding1: [u64; 8],
-    amm_owner: Pubkey,
-    lp_amount: u64,
-    client_order_id: u64,
-    recent_epoch: u64,
-    padding2: u64,
+    status: u64, nonce: u64, order_num: u64, depth: u64, coin_decimals: u64,
+    pc_decimals: u64, state: u64, reset_flag: u64, min_size: u64,
+    vol_max_cut_ratio: u64, amount_wave: u64, coin_lot_size: u64,
+    pc_lot_size: u64, min_price_multiplier: u64, max_price_multiplier: u64,
+    sys_decimal_value: u64, fees: Fees, state_data: StateData,
+    coin_vault: Pubkey, pc_vault: Pubkey, coin_vault_mint: Pubkey,
+    pc_vault_mint: Pubkey, lp_mint: Pubkey, open_orders: Pubkey, market: Pubkey,
+    market_program: Pubkey, target_orders: Pubkey, padding1: [u64; 8],
+    amm_owner: Pubkey, lp_amount: u64, client_order_id: u64,
+    recent_epoch: u64, padding2: u64,
 }
 
-/// Décode les données brutes d'un compte de pool AMM V4 en tenant compte
-/// d'un padding de 12 bytes au début des données du compte.
+/// La fonction de décodage, qui est maintenant publique.
 pub fn decode_raydium_amm(id: &Pubkey, data: &[u8]) -> Result<RaydiumAmmPool> {
-    // HYPOTHÈSE FINALE : Les données de la struct AmmInfo commencent après un padding.
-    // La taille totale du compte est souvent plus grande que la struct elle-même.
-    // Nous allons chercher la struct à la fin des données.
     let amm_info_size = std::mem::size_of::<AmmInfo>();
-
     if data.len() < amm_info_size {
-        return Err(anyhow!(
-            "Data too short. Expected at least {} bytes for AmmInfo, got {}",
-            amm_info_size,
-            data.len()
-        ));
+        return Err(anyhow!("Data too short for AmmInfo"));
     }
-
-    // On suppose que la struct AmmInfo se trouve à la fin du buffer de données du compte.
     let amm_info_slice = &data[data.len() - amm_info_size..];
     let amm_info: &AmmInfo = from_bytes(amm_info_slice);
 
@@ -107,7 +78,7 @@ pub fn decode_raydium_amm(id: &Pubkey, data: &[u8]) -> Result<RaydiumAmmPool> {
     })
 }
 
-// L'implémentation de PoolOperations ne change pas.
+// L'implémentation du trait pour notre struct publique.
 impl PoolOperations for RaydiumAmmPool {
     fn get_mints(&self) -> (Pubkey, Pubkey) {
         (self.mint_a, self.mint_b)

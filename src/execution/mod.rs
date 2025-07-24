@@ -1,2 +1,5 @@
-mod bundle_builder;
-mod bundle_sender;
+// src/execution/mod.rs
+
+pub mod optimizer;
+// pub mod bundle_builder; // Pour plus tard
+// pub mod bundle_sender;  // Pour plus tard
